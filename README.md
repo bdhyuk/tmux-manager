@@ -127,7 +127,7 @@ brew install curl            # macOS (보통 이미 있음)
 ```bash
 mkdir -p ~/.local/bin && \
 curl -o ~/.local/bin/tmux-manager \
-  https://raw.githubusercontent.com/<owner>/tmux-manager/main/tmux-manager && \
+  https://raw.githubusercontent.com/bdhyuk/tmux-manager/main/tmux-manager && \
 chmod +x ~/.local/bin/tmux-manager
 ```
 
