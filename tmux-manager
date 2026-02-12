@@ -26,7 +26,10 @@ case "${1:-}" in
 
 $marker
 set-option -g mouse on
+set -g set-clipboard on
 set -g status-left-length 40
+bind-key -T copy-mode MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
+bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
 set -g set-titles on
 set -g set-titles-string "#{pane_title}"
 set -g allow-rename on
