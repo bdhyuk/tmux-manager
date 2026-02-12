@@ -20,6 +20,26 @@ tmux 세션을 한 화면에서 관리하는 터미널 도구입니다.
 
 ---
 
+## Quick Guide
+
+```bash
+# 1. 설치
+mkdir -p ~/.local/bin && \
+curl -o ~/.local/bin/tmux-manager \
+  https://raw.githubusercontent.com/bdhyuk/tmux-manager/main/tmux-manager && \
+chmod +x ~/.local/bin/tmux-manager
+
+# 2. tmux 권장 설정 (마우스, Pane Title 등)
+tmux-manager --setup
+
+# 3. 실행
+tmux-manager
+```
+
+> `~/.local/bin`이 PATH에 없다면: `export PATH="$HOME/.local/bin:$PATH"` 를 `~/.zshrc` 또는 `~/.bashrc`에 추가하세요.
+
+---
+
 ## 1. tmux 설치
 
 ### macOS
