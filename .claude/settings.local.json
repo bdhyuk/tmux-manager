@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tmux -V:*)",
+      "Bash(pip3 list:*)",
+      "Bash(tmux list-sessions:*)",
+      "Bash(tmux list-windows:*)",
+      "Bash(tmux list-panes:*)",
+      "Bash(tmux capture-pane:*)",
+      "Bash(pip3 install:*)",
+      "Bash(python3:*)",
+      "Bash(tmux display-message:*)",
+      "Bash(while read s)",
+      "Bash(do echo \"=== $s ===\")",
+      "Bash(done)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(python -c:*)",
+      "Bash(chmod:*)",
+      "Bash(fzf:*)",
+      "Bash(echo:*)",
+      "Bash(printenv:*)",
+      "Bash(ln:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\ninitial commit\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}

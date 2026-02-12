@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+# tmux-manager — fzf + tmux split session manager
+# Left pane: session list (fzf) | Right pane: live session
+# Manager prefix: Ctrl+a  |  Inner tmux prefix: Ctrl+b
+# Dependencies: tmux, fzf
+set -uo pipefail
+
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+MGR_SESSION="_tmux_mgr"
+
+command -v tmux &>/dev/null || { echo "Error: tmux not found. Install: brew install tmux"; exit 1; }
+command -v fzf  &>/dev/null || { echo "Error: fzf not found.  Install: brew install fzf"; exit 1; }
+
+# ── Sub-commands (called by fzf / tmux) ────────────────
+case "${1:-}" in
+    --list)
+        tmux list-sessions \
+            -F '#{session_name}	#{session_windows}w	#{?session_attached,*,}	#{pane_title}' 2>/dev/null \
+            | grep -v "^${MGR_SESSION}	" \
+            | awk -F'\t' '{printf "%-20s %s %s  %s\n", $1, $2, $3, $4}'
+        exit 0
+        ;;
+
+    --preview)
+        s="$2"
+        printf '\033[1m%s\033[0m\n\n' "Session: $s"
+        while IFS=$'\t' read -r widx wname wpanes; do
+            printf '  Window %s: %s (%s panes)\n' "$widx" "$wname" "$wpanes"
+            tmux list-panes -t "${s}:${widx}" \
+                -F '    Pane #{pane_index}: #{pane_width}x#{pane_height} [#{pane_current_command}]' 2>/dev/null
+        done < <(tmux list-windows -t "$s" \
+            -F '#{window_index}	#{window_name}	#{window_panes}' 2>/dev/null)
+        printf '\n\033[2m── Pane Capture ─────────────────────────\033[0m\n\n'
+        tmux capture-pane -p -t "$s" -S -20 2>/dev/null
+        exit 0
+        ;;
+
+    --connect)
+        session="$2"; pane="$3"
+        tmux respawn-pane -k -t "$pane" \
+            "env -u TMUX tmux attach -t '$session'; echo; echo '  Detached. Ctrl+a ← to select another session.'; cat"
+        tmux select-pane -t "$pane"
+        exit 0
+        ;;
+
+    --run-selector)
+        right_pane="$2"
+        R="$SELF --list"
+
+        list=$("$SELF" --list)
+        if [[ -z "$list" ]]; then
+            read -rp 'No sessions. Create (name, empty to quit): ' name
+            if [[ -n "$name" ]] && ! [[ "$name" =~ [.:\ ] ]]; then
+                tmux new-session -d -s "$name"
+                list=$("$SELF" --list)
+            fi
+            if [[ -z "$list" ]]; then
+                tmux kill-session -t "$MGR_SESSION" 2>/dev/null
+                exit 0
+            fi
+        fi
+
+        # Auto-refresh: background process sends reload every 5s via fzf --listen
+        fzf_port=$((10000 + RANDOM % 50000))
+        (
+            sleep 3
+            while true; do
+                sleep 2
+                curl -s -XPOST "localhost:$fzf_port" -d "reload($R)" 2>/dev/null || break
+            done
+        ) &
+        refresh_pid=$!
+
+        echo "$list" | fzf \
+            --listen "$fzf_port" \
+            --reverse --no-multi --cycle \
+            --header=$'enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^H:Help  esc:Quit\nCtrl+a ←/→: switch panes | Ctrl+b: inner tmux | auto-refresh: 5s' \
+            --preview "$SELF --preview {1}" \
+            --preview-window='down:40%:wrap' \
+            --prompt='session> ' \
+            --pointer='▶' \
+            --color='header:italic' \
+            --bind "enter:execute-silent($SELF --connect {1} $right_pane)+reload($R)" \
+            --bind "ctrl-n:execute($SELF --action-new)+reload($R)" \
+            --bind "ctrl-d:execute($SELF --action-delete {1})+reload($R)" \
+            --bind "ctrl-r:execute($SELF --action-rename {1})+reload($R)" \
+            --bind "ctrl-s:execute($SELF --action-send {1})+reload($R)" \
+            --bind "ctrl-h:execute($SELF --action-help)"
+
+        # fzf exited → clean up
+        kill $refresh_pid 2>/dev/null
+        wait $refresh_pid 2>/dev/null
+        tmux kill-session -t "$MGR_SESSION" 2>/dev/null
+        exit 0
+        ;;
+
+    --action-new)
+        read -rp 'New session name: ' name
+        [[ -z "$name" ]] && exit 0
+        if [[ "$name" =~ [.:\ ] ]]; then
+            echo "Error: name cannot contain . : or spaces"; read -rsn1
+        elif [[ "$name" == "$MGR_SESSION" ]]; then
+            echo "Error: reserved name"; read -rsn1
+        elif tmux new-session -d -s "$name" 2>/dev/null; then
+            echo "Created: $name"; sleep 0.5
+        else
+            echo "Error: failed to create (name may already exist)"; read -rsn1
+        fi
+        exit 0
+        ;;
+
+    --action-delete)
+        s="$2"
+        read -rp "Delete '$s'? [y/N]: " yn
+        if [[ "$yn" == [yY] ]]; then
+            tmux kill-session -t "$s" 2>/dev/null && echo "Deleted: $s" || echo "Error: failed to delete"
+            sleep 0.5
+        fi
+        exit 0
+        ;;
+
+    --action-rename)
+        s="$2"
+        read -rp "Rename '$s' to: " newname
+        [[ -z "$newname" ]] && exit 0
+        if [[ "$newname" =~ [.:\ ] ]]; then
+            echo "Error: name cannot contain . : or spaces"; read -rsn1
+        elif tmux rename-session -t "$s" "$newname" 2>/dev/null; then
+            echo "Renamed: $s -> $newname"; sleep 0.5
+        else
+            echo "Error: failed to rename (name may already exist)"; read -rsn1
+        fi
+        exit 0
+        ;;
+
+    --action-send)
+        s="$2"
+        read -rp "Command for '$s': " cmd
+        [[ -n "$cmd" ]] && tmux send-keys -t "$s" "$cmd" Enter 2>/dev/null \
+            && echo "Sent: $cmd" && sleep 0.5
+        exit 0
+        ;;
+
+    --action-help)
+        cat <<'HELP' | fzf --ansi --reverse --no-multi \
+            --header='tmux Cheatsheet (type to search, esc to close)' \
+            --prompt='search> ' --pointer='▶'
+── Session ──────────────────────────────────────────
+Ctrl+b d          Detach from session
+Ctrl+b $          Rename current session
+Ctrl+b s          List sessions (interactive)
+Ctrl+b (          Switch to previous session
+Ctrl+b )          Switch to next session
+
+── Window ───────────────────────────────────────────
+Ctrl+b c          Create new window
+Ctrl+b ,          Rename current window
+Ctrl+b &          Kill current window
+Ctrl+b w          List windows (interactive)
+Ctrl+b n          Next window
+Ctrl+b p          Previous window
+Ctrl+b 0-9        Switch to window by number
+Ctrl+b l          Toggle last active window
+
+── Pane ─────────────────────────────────────────────
+Ctrl+b %          Split pane vertically
+Ctrl+b "          Split pane horizontally
+Ctrl+b x          Kill current pane
+Ctrl+b o          Cycle through panes
+Ctrl+b ;          Toggle last active pane
+Ctrl+b ↑↓←→      Move between panes
+Ctrl+b z          Toggle pane zoom (fullscreen)
+Ctrl+b {          Move pane left
+Ctrl+b }          Move pane right
+Ctrl+b Space      Cycle pane layouts
+Ctrl+b q          Show pane numbers (press # to jump)
+
+── Resize Pane ──────────────────────────────────────
+Ctrl+b Ctrl+↑     Resize pane up
+Ctrl+b Ctrl+↓     Resize pane down
+Ctrl+b Ctrl+←     Resize pane left
+Ctrl+b Ctrl+→     Resize pane right
+
+── Copy Mode (vi) ───────────────────────────────────
+Ctrl+b [          Enter copy mode
+q                 Exit copy mode
+/                 Search forward
+?                 Search backward
+Space             Start selection
+Enter             Copy selection
+Ctrl+b ]          Paste buffer
+
+── Misc ─────────────────────────────────────────────
+Ctrl+b :          Enter command mode
+Ctrl+b t          Show clock
+Ctrl+b ?          List all key bindings
+HELP
+        exit 0
+        ;;
+esac
+
+# ── Main entry point: set up tmux split layout ────────
+
+# Clean up old manager session
+tmux kill-session -t "$MGR_SESSION" 2>/dev/null
+
+# Get terminal size for correct split ratio
+if [[ -n "${TMUX:-}" ]]; then
+    mgr_cols=$(tmux display-message -p '#{client_width}')
+    mgr_lines=$(tmux display-message -p '#{client_height}')
+else
+    mgr_cols=$(tput cols)
+    mgr_lines=$(tput lines)
+fi
+
+# Create manager session with correct size
+tmux new-session -d -s "$MGR_SESSION" -x "$mgr_cols" -y "$mgr_lines"
+
+# Configure: Ctrl+a prefix so Ctrl+b passes through to inner session
+tmux set-option -t "$MGR_SESSION" prefix C-a
+tmux set-option -t "$MGR_SESSION" -u prefix2
+tmux set-option -t "$MGR_SESSION" mouse on
+tmux set-option -t "$MGR_SESSION" status-left ' #[fg=green,bold]MGR#[default] '
+tmux set-option -t "$MGR_SESSION" status-right ' ^A: mgr | ^B: session '
+
+# Create right pane (70%) with welcome message
+right_cols=$((mgr_cols * 70 / 100))
+right_pane=$(tmux split-window -h -t "$MGR_SESSION" -l "$right_cols" -d -P -F '#{pane_id}' \
+    "echo; echo '  Select a session from the left pane (Enter).'; echo '  Ctrl+a ←/→ to switch panes.'; echo '  Ctrl+b works normally inside the session.'; echo; cat")
+
+# Get left pane and run selector in it
+left_pane=$(tmux list-panes -t "$MGR_SESSION" -F '#{pane_id}' | head -1)
+tmux respawn-pane -k -t "$left_pane" "$SELF --run-selector $right_pane"
+
+# Attach/switch to manager
+if [[ -n "${TMUX:-}" ]]; then
+    tmux switch-client -t "$MGR_SESSION"
+else
+    exec tmux attach -t "$MGR_SESSION"
+fi
