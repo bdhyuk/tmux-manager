@@ -13,11 +13,65 @@ command -v fzf  &>/dev/null || { echo "Error: fzf not found.  Install: brew inst
 
 # ── Sub-commands (called by fzf / tmux) ────────────────
 case "${1:-}" in
+    --setup)
+        conf="$HOME/.tmux.conf"
+        marker="# [tmux-manager]"
+
+        if [[ -f "$conf" ]] && grep -qF "$marker" "$conf"; then
+            echo "Already configured in $conf"
+            exit 0
+        fi
+
+        cat >> "$conf" <<EOF
+
+$marker
+set-option -g mouse on
+set -g status-left-length 40
+set -g set-titles on
+set -g set-titles-string "#{pane_title}"
+set -g allow-rename on
+EOF
+        echo "Added tmux settings to $conf"
+        tmux source "$conf" 2>/dev/null && echo "Settings applied." || echo "Run 'tmux source ~/.tmux.conf' inside tmux to apply."
+        exit 0
+        ;;
     --list)
-        tmux list-sessions \
-            -F '#{session_name}	#{session_windows}w	#{?session_attached,*,}	#{pane_title}' 2>/dev/null \
-            | grep -v "^${MGR_SESSION}	" \
-            | awk -F'\t' '{printf "%-20s %s %s  %s\n", $1, $2, $3, $4}'
+        while IFS='§' read -r name windows attached title; do
+            status=""
+            # Capture last 10 lines, strip ANSI escape codes
+            content=$(tmux capture-pane -p -t "$name" -S -10 2>/dev/null \
+                | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g')
+
+            if [[ -n "$content" ]]; then
+                # WaitingInput: selection/navigation prompt
+                if echo "$content" | grep -qF "Enter to select" \
+                || echo "$content" | grep -qF "to navigate" \
+                || echo "$content" | grep -qF "Esc to cancel"; then
+                    status=$'\033[33m[WAIT]\033[0m'
+                # has_input_field: ❯ prompt with ─ border above
+                elif echo "$content" | grep -qF '❯'; then
+                    has_field=false
+                    prev=""
+                    while IFS= read -r line; do
+                        if [[ "$line" == *'❯'* && "$prev" == *'─'* ]]; then
+                            has_field=true; break
+                        fi
+                        prev="$line"
+                    done <<< "$content"
+                    if $has_field; then
+                        if echo "$content" | grep -qF "to interrupt"; then
+                            status=$'\033[32m[WORK]\033[0m'
+                        else
+                            status=$'\033[2m[IDLE]\033[0m'
+                        fi
+                    fi
+                fi
+            fi
+
+            printf "%-20s %s %s  %b  %s\n" "$name" "$windows" "$attached" "$status" "$title"
+        done < <(tmux list-sessions \
+            -F '#{session_name}§#{session_windows}w§#{?session_attached,*,}§#{pane_title}' 2>/dev/null \
+            | grep -v "^${MGR_SESSION}§")
         exit 0
         ;;
 
@@ -60,19 +114,21 @@ case "${1:-}" in
             fi
         fi
 
-        # Auto-refresh: background process sends reload every 5s via fzf --listen
+        # Auto-refresh: background process sends reload-sync every 2s via fzf --listen
         fzf_port=$((10000 + RANDOM % 50000))
         (
             sleep 3
             while true; do
-                sleep 0.5
-                curl -s -XPOST "localhost:$fzf_port" -d "reload($R)" 2>/dev/null || break
+                sleep 2
+                curl -s -XPOST "localhost:$fzf_port" -d "reload-sync($R)" 2>/dev/null || break
             done
         ) &
         refresh_pid=$!
 
         echo "$list" | fzf \
+            --ansi \
             --listen "$fzf_port" \
+            --track \
             --reverse --no-multi --cycle \
             --header=$'enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^H:Help  esc:Quit\nCtrl+a ←/→: switch panes | Ctrl+b: inner tmux' \
             --preview "$SELF --preview {1}" \
@@ -80,11 +136,11 @@ case "${1:-}" in
             --prompt='session> ' \
             --pointer='▶' \
             --color='header:italic' \
-            --bind "enter:execute-silent($SELF --connect {1} $right_pane)+reload($R)" \
-            --bind "ctrl-n:execute($SELF --action-new)+reload($R)" \
-            --bind "ctrl-d:execute($SELF --action-delete {1})+reload($R)" \
-            --bind "ctrl-r:execute($SELF --action-rename {1})+reload($R)" \
-            --bind "ctrl-s:execute($SELF --action-send {1})+reload($R)" \
+            --bind "enter:execute-silent($SELF --connect {1} $right_pane)+reload-sync($R)" \
+            --bind "ctrl-n:execute($SELF --action-new)+reload-sync($R)" \
+            --bind "ctrl-d:execute($SELF --action-delete {1})+reload-sync($R)" \
+            --bind "ctrl-r:execute($SELF --action-rename {1})+reload-sync($R)" \
+            --bind "ctrl-s:execute($SELF --action-send {1})+reload-sync($R)" \
             --bind "ctrl-h:execute($SELF --action-help)"
 
         # fzf exited → clean up

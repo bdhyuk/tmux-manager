@@ -161,7 +161,29 @@ source ~/.zshrc   # 또는 source ~/.bashrc
 
 ---
 
-## 5. 실행
+## 5. tmux 설정
+
+마우스 지원, Pane Title 표시 등 권장 설정을 자동으로 추가합니다:
+
+```bash
+tmux-manager --setup
+```
+
+이 명령은 `~/.tmux.conf`에 다음 설정을 추가합니다:
+
+```bash
+set-option -g mouse on              # 마우스 클릭/스크롤/드래그
+set -g status-left-length 40        # 상태바 왼쪽 길이
+set -g set-titles on                # 터미널 타이틀 패스스루
+set -g set-titles-string "#{pane_title}"
+set -g allow-rename on              # Pane Title 자동 갱신 (Claude Code 등)
+```
+
+> 이미 설정이 있으면 중복 추가되지 않습니다. 수동으로 `~/.tmux.conf`에 직접 추가해도 됩니다.
+
+---
+
+## 6. 실행
 
 ```bash
 tmux-manager
