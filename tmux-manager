@@ -65,7 +65,7 @@ case "${1:-}" in
         (
             sleep 3
             while true; do
-                sleep 2
+                sleep 0.5
                 curl -s -XPOST "localhost:$fzf_port" -d "reload($R)" 2>/dev/null || break
             done
         ) &
@@ -74,9 +74,9 @@ case "${1:-}" in
         echo "$list" | fzf \
             --listen "$fzf_port" \
             --reverse --no-multi --cycle \
-            --header=$'enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^H:Help  esc:Quit\nCtrl+a ←/→: switch panes | Ctrl+b: inner tmux | auto-refresh: 5s' \
+            --header=$'enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^H:Help  esc:Quit\nCtrl+a ←/→: switch panes | Ctrl+b: inner tmux' \
             --preview "$SELF --preview {1}" \
-            --preview-window='down:40%:wrap' \
+            --preview-window='down:40%:wrap:follow' \
             --prompt='session> ' \
             --pointer='▶' \
             --color='header:italic' \
