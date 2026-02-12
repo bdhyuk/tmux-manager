@@ -225,6 +225,66 @@ tmux-manager
 
 ---
 
+## 세션 복원 (선택사항)
+
+PC를 종료하면 tmux 세션이 모두 사라집니다. **tmux-resurrect**와 **tmux-continuum** 플러그인을 설치하면 세션 레이아웃을 자동 저장/복원할 수 있습니다.
+
+### 플러그인 설치
+
+```bash
+# TPM (tmux plugin manager) 설치
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+
+# 플러그인 직접 설치
+git clone https://github.com/tmux-plugins/tmux-resurrect ~/.tmux/plugins/tmux-resurrect
+git clone https://github.com/tmux-plugins/tmux-continuum ~/.tmux/plugins/tmux-continuum
+```
+
+### tmux 설정
+
+`~/.tmux.conf`에 추가:
+
+```bash
+# Plugins
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+set -g @plugin 'tmux-plugins/tmux-continuum'
+
+# 자동 저장/복원
+set -g @continuum-restore 'on'
+set -g @continuum-save-interval '15'   # 15분마다 자동 저장
+
+# TPM 초기화 (맨 아래에 위치)
+run '~/.tmux/plugins/tpm/tpm'
+```
+
+설정 적용:
+
+```bash
+tmux source ~/.tmux.conf
+```
+
+### 세션 저장/복원 단축키
+
+| 키 | 동작 |
+|----|------|
+| `Ctrl+b Ctrl+s` | 수동 저장 |
+| `Ctrl+b Ctrl+r` | 수동 복원 |
+
+> continuum을 켜면 15분마다 자동 저장되므로, PC 재시작 후 tmux를 열면 자동으로 세션이 복원됩니다.
+
+### 복원 범위
+
+| 복원됨 | 복원 안 됨 |
+|--------|-----------|
+| 세션, 윈도우, 패인 레이아웃 | 실행 중이던 프로세스 (서버 등) |
+| 각 패인의 작업 디렉토리 | 환경 변수, 임시 상태 |
+| 패인 내용 (옵션) | Claude Code 대화 (별도 복원) |
+
+> **참고**: Claude Code 대화는 `claude --continue` 또는 `claude --resume`으로 이어갈 수 있습니다.
+
+---
+
 ## 제거
 
 ```bash
