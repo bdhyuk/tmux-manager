@@ -36,6 +36,8 @@ bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pb
 set -g set-titles on
 set -g set-titles-string "#{pane_title}"
 set -g allow-rename on
+set -g extended-keys on
+set -sa terminal-features ',xterm-256color:extkeys'
 EOF
         echo "Added tmux settings to $conf"
         tmux source "$conf" 2>/dev/null && echo "Settings applied." || echo "Run 'tmux source ~/.tmux.conf' inside tmux to apply."
