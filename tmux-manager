@@ -46,35 +46,29 @@ EOF
         entries=()
         while IFS='§' read -r name windows attached title cwd; do
             status=""
-            # Capture last 10 lines, strip ANSI escape codes
-            content=$(tmux capture-pane -p -t "$name" -S -10 2>/dev/null \
-                | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g')
-
-            if [[ -n "$content" ]]; then
-                # Use only last 3 lines for status hints (avoid false matches from scrollback)
-                bottom=$(echo "$content" | tail -3)
-                # WaitingInput: selection/menu prompt
-                if echo "$bottom" | grep -qF "Esc to cancel"; then
-                    status=$'\033[33m[WAIT]\033[0m'
-                # has_input_field: ❯ prompt with ─ border above
-                elif echo "$content" | grep -qF '❯'; then
-                    has_field=false
-                    prompt_line=""
-                    prev=""
-                    while IFS= read -r line; do
-                        if [[ "$line" == *'❯'* && "$prev" == *'─'* ]]; then
-                            has_field=true
-                            prompt_line="$line"
-                        fi
-                        prev="$line"
-                    done <<< "$content"
-                    if $has_field; then
-                        if echo "$bottom" | grep -qF "to interrupt" \
-                        && ! echo "$bottom" | grep -qF "accept edits"; then
-                            status=$'\033[32m[WORK]\033[0m'
+            # Detect Claude Code status via pane_title
+            # ✳ = idle indicator, Braille spinner (⠐ etc.) = working
+            _blink=$(($(date +%s) % 2))
+            if [[ -n "$title" ]]; then
+                if [[ "$title" == ✳* ]]; then
+                    # Claude Code idle — check for WAIT state
+                    bottom=$(tmux capture-pane -p -t "$name" -S -5 2>/dev/null \
+                        | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g' | tail -3)
+                    if echo "$bottom" | grep -qF "Esc to cancel"; then
+                        if [[ $_blink -eq 0 ]]; then
+                            status=$'\033[1;33m[WAIT]\033[0m'
                         else
-                            status=$'\033[2m[IDLE]\033[0m'
+                            status=$'\033[2;33m[WAIT]\033[0m'
                         fi
+                    else
+                        status=$'\033[2m[IDLE]\033[0m'
+                    fi
+                else
+                    # Non-✳ title → Claude Code spinner (working)
+                    if [[ $_blink -eq 0 ]]; then
+                        status=$'\033[1;32m[WORK]\033[0m'
+                    else
+                        status=$'\033[2;32m[WORK]\033[0m'
                     fi
                 fi
             fi
