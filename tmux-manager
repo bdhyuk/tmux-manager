@@ -52,9 +52,11 @@ EOF
             if [[ -n "$title" ]]; then
                 if [[ "$title" == ✳* ]]; then
                     # Claude Code idle — check for WAIT state
-                    bottom=$(tmux capture-pane -p -t "$name" -S -5 2>/dev/null \
-                        | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g' | tail -3)
-                    if echo "$bottom" | grep -qF "Esc to cancel"; then
+                    # Patterns: permission prompt (Esc to cancel), plan approval (ctrl-g to edit),
+                    # question prompt (? [), yes/no prompt ([Y/n] [y/N])
+                    bottom=$(tmux capture-pane -p -t "$name" -S -8 2>/dev/null \
+                        | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g' | tail -6)
+                    if echo "$bottom" | grep -qE "Esc to cancel|ctrl-g to edit|\\? \\[|\\[Y/n\\]|\\[y/N\\]"; then
                         if [[ $_blink -eq 0 ]]; then
                             status=$'\033[1;33m[WAIT]\033[0m'
                         else
@@ -160,7 +162,7 @@ EOF
                 if [[ -n "$remote_ver" && "$remote_ver" != "$VERSION" ]]; then
                     curl -s -XPOST "localhost:$fzf_port" \
                         -d "change-header(enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^U:Update(v$remote_ver)  ^H:Help  esc:Quit
-Ctrl+a ←/→: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
+Ctrl+a ←/→: switch panes | Ctrl+b: inner tmux | v$VERSION → v$remote_ver)" 2>/dev/null
                 fi
                 sleep 600
             done
@@ -172,7 +174,7 @@ Ctrl+a ←/→: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
             --listen "$fzf_port" \
             --track \
             --reverse --no-multi --cycle \
-            --header=$'enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^U:Update  ^H:Help  esc:Quit\nCtrl+a ←/→: switch panes | Ctrl+b: inner tmux' \
+            --header=$'enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^U:Update  ^H:Help  esc:Quit\nCtrl+a ←/→: switch panes | Ctrl+b: inner tmux | v'"$VERSION" \
             --preview "$SELF --preview {1}" \
             --preview-window='down:40%:wrap:follow' \
             --prompt='session> ' \
