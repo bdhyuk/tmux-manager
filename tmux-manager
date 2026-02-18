@@ -161,7 +161,7 @@ EOF
         (
             sleep 1
             while true; do
-                sleep 0.1
+                sleep 1
                 curl -s -XPOST "localhost:$fzf_port" -d "reload-sync($R)" 2>/dev/null || break
             done
         ) &
