@@ -11,8 +11,20 @@ REPO_RAW="https://raw.githubusercontent.com/bdhyuk/tmux-manager/main"
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 MGR_SESSION="_tmux_mgr"
 
-command -v tmux &>/dev/null || { echo "Error: tmux not found. Install: brew install tmux"; exit 1; }
-command -v fzf  &>/dev/null || { echo "Error: fzf not found.  Install: brew install fzf"; exit 1; }
+command -v tmux &>/dev/null || { echo "Error: tmux not found. Install: apt install tmux / brew install tmux"; exit 1; }
+command -v fzf  &>/dev/null || { echo "Error: fzf not found.  Install: https://github.com/junegunn/fzf#installation"; exit 1; }
+
+# fzf version detection for feature compatibility
+_fzf_ver=$(fzf --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
+_fzf_major=${_fzf_ver%%.*}; _fzf_major=${_fzf_major:-0}
+_fzf_minor=${_fzf_ver#*.}; _fzf_minor=${_fzf_minor%%.*}; _fzf_minor=${_fzf_minor:-0}
+[[ "$_fzf_major" =~ ^[0-9]+$ ]] || _fzf_major=0
+[[ "$_fzf_minor" =~ ^[0-9]+$ ]] || _fzf_minor=0
+_fzf_num=$(( _fzf_major * 100 + _fzf_minor ))
+if (( _fzf_num < 27 )); then
+    echo "Error: fzf 0.27+ required (found ${_fzf_ver:-unknown}). Update: https://github.com/junegunn/fzf#installation"
+    exit 1
+fi
 
 # ── Sub-commands (called by fzf / tmux) ────────────────
 case "${1:-}" in
@@ -25,14 +37,27 @@ case "${1:-}" in
             exit 0
         fi
 
+        # Detect platform clipboard command
+        if command -v pbcopy &>/dev/null; then
+            _copy_cmd="pbcopy"
+        elif command -v xclip &>/dev/null; then
+            _copy_cmd="xclip -selection clipboard"
+        elif command -v xsel &>/dev/null; then
+            _copy_cmd="xsel --clipboard --input"
+        elif command -v wl-copy &>/dev/null; then
+            _copy_cmd="wl-copy"
+        else
+            _copy_cmd=""
+        fi
+
         cat >> "$conf" <<EOF
 
 $marker
 set-option -g mouse on
 set -g set-clipboard on
 set -g status-left-length 40
-bind-key -T copy-mode MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
-bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
+${_copy_cmd:+bind-key -T copy-mode MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "$_copy_cmd"}
+${_copy_cmd:+bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "$_copy_cmd"}
 set -g set-titles on
 set -g set-titles-string "#{pane_title}"
 set -g allow-rename on
@@ -156,55 +181,63 @@ EOF
             fi
         fi
 
-        # Auto-refresh: background process sends reload-sync every 2s via fzf --listen
+        # Build fzf options based on version
+        fzf_opts=(--ansi --reverse --no-multi --cycle)
         fzf_port=$((10000 + RANDOM % 50000))
-        (
-            sleep 1
-            while true; do
-                sleep 1
-                curl -s -XPOST "localhost:$fzf_port" -d "reload-sync($R)" 2>/dev/null || break
-            done
-        ) &
-        refresh_pid=$!
+        (( _fzf_num >= 36 )) && fzf_opts+=(--listen "$fzf_port")
+        (( _fzf_num >= 38 )) && fzf_opts+=(--header-first)
+        (( _fzf_num >= 53 )) && fzf_opts+=(--track)
+        _pwin="down:40%:wrap"
+        (( _fzf_num >= 43 )) && _pwin="down:40%:wrap:follow"
 
-        # Background update check (every 10 minutes)
-        (
-            sleep 5
-            while true; do
-                remote_ver=$(curl -sf "$REPO_RAW/VERSION" 2>/dev/null | tr -d '[:space:]')
-                if [[ -n "$remote_ver" && "$remote_ver" != "$VERSION" ]]; then
-                    curl -s -XPOST "localhost:$fzf_port" \
-                        -d "change-header(v$VERSION → v$remote_ver available!  enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^U:Update  ^H:Help  esc:Quit
+        # Auto-refresh via fzf --listen (requires fzf 0.36+)
+        refresh_pid=""; update_pid=""
+        if (( _fzf_num >= 36 )); then
+            (
+                sleep 1
+                while true; do
+                    sleep 1
+                    curl -s -XPOST "localhost:$fzf_port" -d "reload($R)" 2>/dev/null || break
+                done
+            ) &
+            refresh_pid=$!
+
+            # Background update check (every 10 minutes)
+            (
+                sleep 5
+                while true; do
+                    remote_ver=$(curl -sf "$REPO_RAW/VERSION" 2>/dev/null | tr -d '[:space:]')
+                    if [[ -n "$remote_ver" && "$remote_ver" != "$VERSION" ]]; then
+                        curl -s -XPOST "localhost:$fzf_port" \
+                            -d "change-header(v$VERSION → v$remote_ver available!  enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^U:Update  ^H:Help  esc:Quit
 Ctrl+a ←/→: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
-                fi
-                sleep 600
-            done
-        ) &
-        update_pid=$!
+                    fi
+                    sleep 600
+                done
+            ) &
+            update_pid=$!
+        fi
 
         echo "$list" | fzf \
-            --ansi \
-            --listen "$fzf_port" \
-            --track \
-            --reverse --no-multi --cycle --header-first \
+            "${fzf_opts[@]}" \
             --header=$'v'"$VERSION"$'  enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^U:Update  ^H:Help  esc:Quit\nCtrl+a ←/→: switch panes | Ctrl+b: inner tmux' \
             --preview "$SELF --preview {1}" \
-            --preview-window='down:40%:wrap:follow' \
+            --preview-window="$_pwin" \
             --prompt='filter> ' \
             --pointer='▶' \
             --info=hidden \
             --color='header:italic' \
-            --bind "enter:execute-silent($SELF --connect {1} $right_pane)+reload-sync($R)" \
-            --bind "ctrl-n:execute($SELF --action-new)+reload-sync($R)" \
-            --bind "ctrl-d:execute($SELF --action-delete {1})+reload-sync($R)" \
-            --bind "ctrl-r:execute($SELF --action-rename {1})+reload-sync($R)" \
-            --bind "ctrl-s:execute($SELF --action-send {1})+reload-sync($R)" \
-            --bind "ctrl-u:execute($SELF --update)+reload-sync($R)" \
+            --bind "enter:execute-silent($SELF --connect {1} $right_pane)+reload($R)" \
+            --bind "ctrl-n:execute($SELF --action-new)+reload($R)" \
+            --bind "ctrl-d:execute($SELF --action-delete {1})+reload($R)" \
+            --bind "ctrl-r:execute($SELF --action-rename {1})+reload($R)" \
+            --bind "ctrl-s:execute($SELF --action-send {1})+reload($R)" \
+            --bind "ctrl-u:execute($SELF --update)+reload($R)" \
             --bind "ctrl-h:execute($SELF --action-help)"
 
         # fzf exited → clean up
-        kill $refresh_pid 2>/dev/null; wait $refresh_pid 2>/dev/null
-        kill $update_pid 2>/dev/null; wait $update_pid 2>/dev/null
+        [[ -n "$refresh_pid" ]] && { kill $refresh_pid 2>/dev/null; wait $refresh_pid 2>/dev/null; }
+        [[ -n "$update_pid" ]] && { kill $update_pid 2>/dev/null; wait $update_pid 2>/dev/null; }
         tmux kill-session -t "$MGR_SESSION" 2>/dev/null
         exit 0
         ;;
