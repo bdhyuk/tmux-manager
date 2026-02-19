@@ -166,6 +166,7 @@ EOF
 
     --run-selector)
         right_pane="$2"
+        rm -f /tmp/_tmux_mgr_restart
         R="$SELF --list"
 
         list=$("$SELF" --list)
@@ -233,12 +234,19 @@ Ctrl+a ←/→: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
             --bind "ctrl-d:execute($SELF --action-delete {1})+reload($R)" \
             --bind "ctrl-r:execute($SELF --action-rename {1})+reload($R)" \
             --bind "ctrl-s:execute($SELF --action-send {1})+reload($R)" \
-            --bind "ctrl-u:execute($SELF --update)+reload($R)" \
+            --bind "ctrl-u:execute($SELF --update)+abort" \
             --bind "ctrl-h:execute($SELF --action-help)"
 
         # fzf exited → clean up
         [[ -n "$refresh_pid" ]] && { kill $refresh_pid 2>/dev/null; wait $refresh_pid 2>/dev/null; }
         [[ -n "$update_pid" ]] && { kill $update_pid 2>/dev/null; wait $update_pid 2>/dev/null; }
+
+        # Restart selector if update was triggered
+        if [[ -f /tmp/_tmux_mgr_restart ]]; then
+            rm -f /tmp/_tmux_mgr_restart
+            exec "$SELF" --run-selector "$right_pane"
+        fi
+
         tmux kill-session -t "$MGR_SESSION" 2>/dev/null
         exit 0
         ;;
@@ -291,6 +299,7 @@ Ctrl+a ←/→: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
         ;;
 
     --update)
+        touch /tmp/_tmux_mgr_restart
         echo "Checking for updates... (current: v$VERSION)"
         remote_ver=$(curl -sf "$REPO_RAW/VERSION" 2>/dev/null | tr -d '[:space:]')
         if [[ -z "$remote_ver" ]]; then
