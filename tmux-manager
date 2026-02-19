@@ -223,7 +223,8 @@ Ctrl+a ←/→: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
             --header=$'v'"$VERSION"$'  enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^U:Update  ^H:Help  esc:Quit\nCtrl+a ←/→: switch panes | Ctrl+b: inner tmux' \
             --preview "$SELF --preview {1}" \
             --preview-window="$_pwin" \
-            --prompt='filter> ' \
+            --disabled \
+            --prompt='' \
             --pointer='▶' \
             --info=hidden \
             --color='header:italic' \
