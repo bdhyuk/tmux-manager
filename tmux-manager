@@ -226,6 +226,7 @@ Ctrl+a ←/→: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
             --preview-window="$_pwin" \
             --disabled \
             --prompt='' \
+            --bind 'change:clear-query' \
             --pointer='▶' \
             --info=hidden \
             --color='header:italic' \
