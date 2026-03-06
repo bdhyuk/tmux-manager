@@ -208,7 +208,7 @@ EOF
             (
                 sleep 5
                 while true; do
-                    remote_ver=$(curl -sf "$REPO_RAW/VERSION" 2>/dev/null | tr -d '[:space:]')
+                    remote_ver=$(curl -sf "$REPO_RAW/VERSION?t=$(date +%s)" 2>/dev/null | tr -d '[:space:]')
                     if [[ -n "$remote_ver" && "$remote_ver" != "$VERSION" ]]; then
                         curl -s -XPOST "localhost:$fzf_port" \
                             -d "change-header(v$VERSION → v$remote_ver available!  enter:Connect  ^N:New  ^D:Delete  ^R:Rename  ^S:Send  ^U:Update  ^H:Help  esc:Quit
@@ -303,7 +303,7 @@ Ctrl+a: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
     --update)
         touch /tmp/_tmux_mgr_restart
         echo "Checking for updates... (current: v$VERSION)"
-        remote_ver=$(curl -sf "$REPO_RAW/VERSION" 2>/dev/null | tr -d '[:space:]')
+        remote_ver=$(curl -sf "$REPO_RAW/VERSION?t=$(date +%s)" 2>/dev/null | tr -d '[:space:]')
         if [[ -z "$remote_ver" ]]; then
             echo "Failed to check. Verify network."; read -rsn1; exit 1
         fi
@@ -315,7 +315,7 @@ Ctrl+a: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
         echo ""
         read -rp "Update? [Y/n]: " yn
         if [[ "$yn" != [nN] ]]; then
-            if curl -sf "$REPO_RAW/tmux-manager" -o "$SELF.tmp" && chmod +x "$SELF.tmp"; then
+            if curl -sf "$REPO_RAW/tmux-manager?t=$(date +%s)" -o "$SELF.tmp" && chmod +x "$SELF.tmp"; then
                 mv "$SELF.tmp" "$SELF"
                 echo "Updated to v$remote_ver! Restart manager to apply."
             else
