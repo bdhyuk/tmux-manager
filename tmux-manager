@@ -80,10 +80,10 @@ EOF
                 if [[ "$title" == ✳* ]]; then
                     # Claude Code idle — check for WAIT state
                     # Patterns: permission prompt (Esc to cancel), plan approval (ctrl-g to edit),
-                    # question prompt (? [), yes/no prompt ([Y/n] [y/N])
+                    # question prompt (? [), yes/no prompt ([Y/N])
                     bottom=$(tmux capture-pane -p -t "$name" -S -8 2>/dev/null \
                         | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g' | tail -6)
-                    if echo "$bottom" | grep -qE "Esc to cancel|ctrl-g to edit|\\? \\[|\\[Y/n\\]|\\[y/N\\]"; then
+                    if echo "$bottom" | grep -qE "Esc to cancel|ctrl-g to edit|\\? \\[|\\[Y/N\\]"; then
                         if [[ $_blink -eq 0 ]]; then
                             status=$'\033[1;31m[WAIT]\033[0m'
                         else
@@ -270,7 +270,7 @@ Ctrl+a: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
 
     --action-delete)
         s="$2"
-        read -rp "Delete '$s'? [y/N]: " yn
+        read -rp "Delete '$s'? [Y/N]: " yn
         if [[ "$yn" == [yY] ]]; then
             tmux kill-session -t "$s" 2>/dev/null && echo "Deleted: $s" || echo "Error: failed to delete"
             sleep 0.5
@@ -313,7 +313,7 @@ Ctrl+a: switch panes | Ctrl+b: inner tmux)" 2>/dev/null
         echo ""
         echo "Update available: v$VERSION → v$remote_ver"
         echo ""
-        read -rp "Update? [Y/n]: " yn
+        read -rp "Update? [Y/N]: " yn
         if [[ "$yn" != [nN] ]]; then
             if curl -sf "$REPO_RAW/tmux-manager?t=$(date +%s)" -o "$SELF.tmp" && chmod +x "$SELF.tmp"; then
                 mv "$SELF.tmp" "$SELF"
